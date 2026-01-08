@@ -18,8 +18,9 @@ namespace MidiToLetters
 
             if (!File.Exists(ConfigFile))
             {
-                Console.WriteLine($"Missing {ConfigFile}. Create it next to the exe."); // TODO
-                return;
+                Console.WriteLine($"{ConfigFile} not found. Creating default config.");
+                var defaultConfig = AppConfig.CreateDefault();
+                defaultConfig.Save(ConfigFile);
             }
 
             config = AppConfig.Load(ConfigFile);
@@ -66,7 +67,6 @@ namespace MidiToLetters
 
                 if (config.Mappings.TryGetValue(name, out var letter) && !string.IsNullOrWhiteSpace(letter))
                 {
-                    // Expect single character, but we’ll send first codepoint
                     char ch = letter.Trim()[0];
                     SendUnicodeChar(ch);
 
