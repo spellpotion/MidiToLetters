@@ -9,6 +9,8 @@ namespace MidiToLetters
         private const string ConfigFile = "appsettings.json";
 
         private static int? noteNumberPrev = null;
+        private static int? pendingBlackNoteNumber = null;
+        private static int? pendingBlackPitch = null;
         private static readonly Dictionary<int, bool> sharpToggle = [];
         private static AppConfig config = new();
 
@@ -63,6 +65,42 @@ namespace MidiToLetters
                 TryReloadConfig();
 
                 var noteNumber = noteOnEvent.NoteNumber;
+                var pitch = ((noteNumber % 12) + 12) % 12;
+
+                if (config.ParsedMode == EnharmonicMode.Post)
+                {
+                    if (IsBlack(pitch))
+                    {
+                        pendingBlackNoteNumber = noteNumber;
+                        pendingBlackPitch = pitch;
+                        Console.WriteLine($"MIDI {noteNumber} pending");
+                        return;
+                    }
+
+                    if (pendingBlackNoteNumber.HasValue && pendingBlackPitch.HasValue)
+                    {
+                        var nameBlack = ResolveNoteNameContextual(
+                            pendingBlackPitch.Value,
+                            pendingBlackNoteNumber.Value,
+                            noteNumber);
+
+                        if (config.Mappings.TryGetValue(nameBlack, out var letterBlack) && !string.IsNullOrWhiteSpace(letterBlack))
+                        {
+                            char ch = letterBlack.Trim()[0];
+                            SendUnicodeChar(ch);
+
+                            Console.WriteLine($"MIDI {noteNumber} ({nameBlack}) -> '{ch}'");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"MIDI {noteNumber} ({nameBlack}) no mapping!");
+                        }
+
+                        noteNumberPrev = noteNumber;
+                        return;
+                    }
+                }
+
                 string name = ResolveNoteName(noteNumber, config.ParsedMode);
 
                 if (config.Mappings.TryGetValue(name, out var letter) && !string.IsNullOrWhiteSpace(letter))
@@ -80,6 +118,8 @@ namespace MidiToLetters
                 noteNumberPrev = noteNumber;
             }
         }
+
+        private static bool IsBlack(int pc) => pc is 1 or 3 or 6 or 8 or 10;
 
         private static DateTime lastConfigReadUtc = DateTime.MinValue;
         private static DateTime lastConfigWriteUtc = DateTime.MinValue;
@@ -122,6 +162,21 @@ namespace MidiToLetters
             };
         }
 
+        private static string ResolveNoteNameContextual(int pitch, int noteNumberPrev, int noteNumber)
+        {
+            (string sharp, string flat) = pitch switch
+            {
+                1 => ("C#", "Db"),
+                3 => ("D#", "Eb"),
+                6 => ("F#", "Gb"),
+                8 => ("G#", "Ab"),
+                10 => ("A#", "Bb"),
+                _ => ("H#", "Hb")
+            };
+
+            return noteNumberPrev < noteNumber ? flat : sharp;
+        }
+
         private static string ResolveBlackKey(int pitch, int noteNumber, EnharmonicMode mode)
         {
             (string sharp, string flat) = pitch switch
@@ -146,14 +201,12 @@ namespace MidiToLetters
                 return sharpNext ? sharp : flat;
             }
 
-            // TODO
+            if (mode == EnharmonicMode.Ante)
+            {
+                if (noteNumberPrev is null) return sharp;
 
-            if (noteNumberPrev is null) return sharp;
-
-            int prev = noteNumberPrev.Value;
-
-            if (prev > noteNumber) return flat;
-            if (prev < noteNumber) return sharp;
+                return noteNumberPrev > noteNumber ? flat : sharp;
+            }
 
             return sharp;
         }
