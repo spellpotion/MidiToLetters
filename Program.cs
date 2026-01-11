@@ -7,6 +7,7 @@ namespace MidiToLetters
     public static class Program
     {
         private const string ConfigFile = "appsettings.json";
+        private const ushort VK_SPACE = 0x20;
 
         private static int? noteNumberPrev = null;
         private static int? pendingBlackNoteNumber = null;
@@ -36,7 +37,8 @@ namespace MidiToLetters
             }
 
             Console.WriteLine($"Using MIDI input device index: {config.MidiDeviceIndex} ({MidiIn.DeviceInfo(config.MidiDeviceIndex).ProductName})");
-            Console.WriteLine($"Mode: {config.ParsedMode}");
+            Console.WriteLine($"Enharmonic Mode: {config.ParsedMode}");
+            Console.WriteLine($"Tap Mode: {config.ParsedTap}");
             Console.WriteLine("Press Ctrl+C to exit.\n");
 
             using var midiIn = new MidiIn(config.MidiDeviceIndex);
@@ -64,6 +66,15 @@ namespace MidiToLetters
             {
                 TryReloadConfig();
 
+                if (config.ParsedTap == TapMode.Exclusive || config.ParsedTap == TapMode.Combined)
+                {
+                    SendSpaceKey();
+
+                    Console.WriteLine($"MIDI NoteOn → VK_SPACE");
+
+                    if (config.ParsedTap == TapMode.Exclusive) return;
+                }
+
                 var noteNumber = noteOnEvent.NoteNumber;
                 var pitch = ((noteNumber % 12) + 12) % 12;
 
@@ -86,7 +97,7 @@ namespace MidiToLetters
 
                         if (config.Mappings.TryGetValue(nameBlack, out var letterBlack) && !string.IsNullOrWhiteSpace(letterBlack))
                         {
-                            char ch = letterBlack.Trim()[0];
+                            var ch = letterBlack.Trim()[0];
                             SendUnicodeChar(ch);
 
                             Console.WriteLine($"MIDI {noteNumber} ({nameBlack}) -> '{ch}'");
@@ -305,5 +316,51 @@ namespace MidiToLetters
                 Console.WriteLine($"SendInput failed (sent {sent}/{inputs.Length}), Win32Error={Marshal.GetLastWin32Error()}");
             }
         }
+
+        private static void SendSpaceKey()
+        {
+            var inputs = new INPUT[2];
+
+            // key down
+            inputs[0] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                U = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = VK_SPACE,
+                        wScan = 0,
+                        dwFlags = 0,
+                        time = 0,
+                        dwExtraInfo = IntPtr.Zero
+                    }
+                }
+            };
+
+            // key up
+            inputs[1] = new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                U = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = VK_SPACE,
+                        wScan = 0,
+                        dwFlags = KEYEVENTF_KEYUP,
+                        time = 0,
+                        dwExtraInfo = IntPtr.Zero
+                    }
+                }
+            };
+
+            uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            if (sent != inputs.Length)
+            {
+                Console.WriteLine($"SendInput(VK_SPACE) failed (sent {sent}/{inputs.Length}), Win32Error={Marshal.GetLastWin32Error()}");
+            }
+        }
+
     }
 }

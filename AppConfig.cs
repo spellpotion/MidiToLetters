@@ -15,11 +15,15 @@ namespace MidiToLetters
         };
 
         public int MidiDeviceIndex { get; set; } = 0;
-        public string Mode { get; set; } = "Ante";
+        public string Mode { get; set; } = "Cycle";
+        public string Tap { get; set; } = "Mixed";
         public Dictionary<string, string> Mappings { get; set; } = [];
 
         public EnharmonicMode ParsedMode =>
-            Enum.TryParse<EnharmonicMode>(Mode, ignoreCase: true, out var m) ? m : EnharmonicMode.Ante;
+            Enum.TryParse<EnharmonicMode>(Mode, ignoreCase: true, out var m) ? m : EnharmonicMode.Cycle;
+
+        public TapMode ParsedTap =>
+            Enum.TryParse<TapMode>(Tap, ignoreCase: true, out var m) ? m : TapMode.Combined;
 
         public static AppConfig Load(string path)
         {
@@ -68,6 +72,13 @@ namespace MidiToLetters
     {
         Ante,
         Post,
-        Cycle
+        Cycle,
+    }
+
+    public enum TapMode
+    {
+        Disabled,
+        Exclusive,
+        Combined,
     }
 }
